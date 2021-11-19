@@ -1,4 +1,4 @@
-using Pandas
+#using Pandas
 using JLD
 
 function xyz_to_coord(path, noa)
@@ -80,4 +80,13 @@ function read_trajectory(path, com = true)
         coord = remove_com(coord, atom)
     end
     return coord, atom
+end
+
+function pbc_dist(point1, point2, pbc)
+    inv_pbc = inv(pbc)
+    dist = abs.(point1 .- point2)
+    rel_dist = transpose(inv_pbc) * dist
+    rel_dist -= floor.(rel_dist .+ 0.5)
+    new_dist = transpose(pbc) * rel_dist
+    return norm(new_dist)
 end

@@ -1,4 +1,5 @@
 using FFTW
+using Statistics
 
 function msd_for_corr_time(traj, corr_time)
     start_coord = @view traj[(1 + corr_time):end, :, :]
