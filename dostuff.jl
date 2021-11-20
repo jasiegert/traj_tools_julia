@@ -4,7 +4,9 @@ include("read_trajec.jl")
 include("calcs.jl")
 
 path = "csh2po4_444_standard-pos-1.xyz"
+pbc_path = "cdp_444"
 
+pbc = readdlm(pbc_path)
 @time coord, atom = read_trajectory(path, true)
 if coord == nothing || atom == nothing
     println("Nothing is fine.")

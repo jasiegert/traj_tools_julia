@@ -1,5 +1,6 @@
 #using Pandas
 using JLD
+using LinearAlgebra
 
 function xyz_to_coord(path, noa)
     frame_no = Int( countlines(path) / (noa + 2) )
@@ -56,7 +57,7 @@ function remove_com(trajectory, atom)
      atom_masses = [atomic_mass_dict[entry] for entry in atom]
      atom_masses /= sum(atom_masses)
 
-     trajectory .- sum(trajectory .* repeat(atom_masses', 3, 1), dims = 2)
+     return trajectory .- sum(trajectory .* repeat(atom_masses', 3, 1), dims = 2)
 end
 
 function read_trajectory(path, com = true)
@@ -79,6 +80,7 @@ function read_trajectory(path, com = true)
     if com == true
         coord = remove_com(coord, atom)
     end
+
     return coord, atom
 end
 
@@ -89,4 +91,20 @@ function pbc_dist(point1, point2, pbc)
     rel_dist -= floor.(rel_dist .+ 0.5)
     new_dist = transpose(pbc) * rel_dist
     return norm(new_dist)
+end
+
+function pbc_dist_inv!(dist_tmp, point1, point2, pbc, inv_pbc)
+    dist_tmp .= abs.(point1 .- point2)
+    dist_tmp = inv_pbc * dist_tmp
+    dist_tmp .-= floor.(dist_tmp .+ 0.5)
+    dist_tmp = pbc * dist_tmp
+    return norm(dist_tmp)
+end
+
+function pbc_dist_inv_matmul!(dist_tmp, matmul_tmp, point1, point2, pbc, inv_pbc)
+    dist_tmp .= abs.(point1 .- point2)
+    mul!(matmul_tmp, inv_pbc,dist_tmp)
+    matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
+    mul!(dist_tmp, pbc, matmul_tmp)
+    return norm(dist_tmp)
 end
