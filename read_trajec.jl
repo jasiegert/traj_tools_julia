@@ -1,6 +1,7 @@
 #using Pandas
 using JLD
 using LinearAlgebra
+using StaticArrays
 
 function xyz_to_coord(path, noa)
     frame_no = Int( countlines(path) / (noa + 2) )
@@ -84,24 +85,7 @@ function read_trajectory(path, com = true)
     return coord, atom
 end
 
-function pbc_dist(point1, point2, pbc)
-    inv_pbc = inv(pbc)
-    dist = abs.(point1 .- point2)
-    rel_dist = transpose(inv_pbc) * dist
-    rel_dist -= floor.(rel_dist .+ 0.5)
-    new_dist = transpose(pbc) * rel_dist
-    return norm(new_dist)
-end
-
-function pbc_dist_inv!(dist_tmp, point1, point2, pbc, inv_pbc)
-    dist_tmp .= abs.(point1 .- point2)
-    dist_tmp = inv_pbc * dist_tmp
-    dist_tmp .-= floor.(dist_tmp .+ 0.5)
-    dist_tmp = pbc * dist_tmp
-    return norm(dist_tmp)
-end
-
-function pbc_dist_inv_matmul!(dist_tmp, matmul_tmp, point1, point2, pbc, inv_pbc)
+function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= abs.(point1 .- point2)
     mul!(matmul_tmp, inv_pbc,dist_tmp)
     matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
