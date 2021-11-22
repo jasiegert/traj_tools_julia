@@ -2,19 +2,29 @@ using FFTW
 using Statistics
 using StaticArrays
 
-function msd_for_corr_time(traj, corr_time)
-    start_coord = @view traj[(1 + corr_time):end, :, :]
-    end_coord = @view traj[1:(end - corr_time), :, :]
-    #mean(sum((end_coord - start_coord).^2, dims = 2))
-    mean((end_coord - start_coord).^2) * 3
+function msd_for_corr_time(traj_msd, corr_time)
+    a = 0
+    for k in 1:size(traj_msd)[3]
+        for j in 1:size(traj_msd)[2]
+            for i in 1:size(traj_msd)[1]-corr_time
+                a += (traj_msd[i+corr_time, j, k] - traj_msd[i, j, k])^2
+            end
+        end
+    end
+    return a /= (size(traj_msd)[1] - corr_time) * size(traj_msd)[3]
 end
 
 function msd_direct(traj, timestep_fs, atom, targetatom, resolution, timerange)
     timesteps = size(traj)[3]
     corr_time_list = range(0, length = resolution, step = round(Int, timesteps * timerange / resolution))
-    traj_msd = traj[:, atom .== targetatom, :]
-    traj_msd = permutedims(traj_msd, [3, 1, 2])
-    corr_time_list * timestep_fs / 1000, [msd_for_corr_time(traj_msd, corr_time) for corr_time in corr_time_list]
+    # Permuting the trajectory to shape (timesteps, dimensions, atoms) is faster, because it allows the innermost loop over the timesteps to be along the first dimension
+    traj_msd = permutedims(traj[:, atom .== targetatom, :], [3, 1, 2])
+    msd_result = Array{Float64, 1}(undef, resolution)
+    Threads.@threads for i in 1:resolution
+        msd_result[i] = msd_for_corr_time(traj_msd, corr_time_list[i])
+    end
+    # correlation time in ps, MSD in A^2
+    return corr_time_list * timestep_fs / 1000, msd_result
 end
 
 function msd_fft(traj, timestep_fs, atom, targetatom, timerange)
@@ -45,18 +55,19 @@ function create_dist_histogram(coord, atom, atomtype1, atomtype2, pbc, distance_
     # Copy trajectories of specified atom types for later use; using @view here causes a lot more memory usage
     coord1 = coord[:, atom .== atomtype1, :]
     coord2 = coord[:, atom .== atomtype2, :]
-    inv_pbc = inv(pbc)
     d_min, d_max, d_step = distance_limits[1], distance_limits[end], convert(Float64, distance_limits.step)
-    # Each thread will process one iteration; each will produce its own dist_histogram_thread and add it to the overall dist_histogram at the end
-    dist_tmp = Array{Float64,1}(undef, 3)
-    matmul_tmp = Array{Float64,1}(undef, 3)
-    # Iterate through timesteps
+    # Use static arrays for pbc and inverse pbc; use mutable static arrays to hold temporary results of pbc_dist
+    pbc_static = SMatrix{3,3,Float64}(pbc)
+    inv_pbc_static = inv(pbc_static)
+    dist_tmp = zeros(MVector{3}) #Array{Float64,1}(undef, 3)
+    matmul_tmp = zeros(MVector{3}) #Array{Float64,1}(undef, 3)
     i_limits = 1:size(coord)[3]
+    # Iterate through timesteps
     @views for i in i_limits
         # Iterate through atoms of both atom types
         for x in eachcol(coord1[:, :, i])
             for y in eachcol(coord2[:, :, i])
-                distance = pbc_dist(x, y, pbc, inv_pbc, dist_tmp, matmul_tmp)
+                distance = pbc_dist(x, y, pbc_static, inv_pbc_static, dist_tmp, matmul_tmp)
                 bin!(dist_histogram, distance, d_min, d_max, d_step)
             end
         end
@@ -89,11 +100,11 @@ function create_dist_histogram_multi(coord, atom, atomtype1, atomtype2, pbc, dis
     thread_limits = convert.(Int, floor.(range(1, size(coord)[3] + 1, length = Threads.nthreads() + 1)))
     # Lock to prevent two threads from editing dist_histogram
     Rlock = ReentrantLock()
-    # Each thread will process one iteration; each will produce its own dist_histogram_thread and add it to the overall dist_histogram at the end
+    # Each thread will process one iteration of this loop; each will produce its own dist_histogram_thread and add it to the overall dist_histogram at the end
     Threads.@threads for i_thread in 1:Threads.nthreads()
         dist_histogram_thread = zeros(Int, distance_limits.len - 1)
-        dist_tmp = zeros(MVector{3}) #Array{Float64,1}(undef, 3)
-        matmul_tmp = zeros(MVector{3}) #Array{Float64,1}(undef, 3)
+        dist_tmp = zeros(MVector{3})
+        matmul_tmp = zeros(MVector{3})
         i_limits = thread_limits[Threads.threadid()]:(thread_limits[Threads.threadid() + 1] - 1)
         # Iterate through chunk of timesteps set aside for this thread
         @views for i in i_limits
