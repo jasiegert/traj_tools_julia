@@ -85,12 +85,24 @@ function read_trajectory(path, com = true)
     return coord, atom
 end
 
+function max_distance_for_pbc_dist(pbc)
+    volume = det(pbc)
+    a, b, c = eachcol(pbc)
+    largest_site = max(norm(cross(a, b)), norm(cross(b, c)), norm(cross(c, a)))
+    shortest_height = volume / largest_site
+    return shortest_height
+end
+
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= abs.(point1 .- point2)
     mul!(matmul_tmp, inv_pbc,dist_tmp)
     matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
     mul!(dist_tmp, pbc, matmul_tmp)
     return norm(dist_tmp)
+end
+
+function pbc_dist_triclinic
+
 end
 
 function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 2}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
