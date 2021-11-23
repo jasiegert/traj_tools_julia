@@ -2,6 +2,11 @@
 using JLD
 using LinearAlgebra
 using StaticArrays
+using DelimitedFiles
+
+function read_pbc(pbc_path)
+    return transpose(readdlm(pbc_path))
+end
 
 function xyz_to_coord(path, noa)
     frame_no = Int( countlines(path) / (noa + 2) )
@@ -53,6 +58,7 @@ function remove_com(trajectory, atom)
         "P" => 30.9738,
         "S" => 32.065,
         "Cs" => 132.9055,
+        "Sn" => 118.71,
         )
 
      atom_masses = [atomic_mass_dict[entry] for entry in atom]
@@ -85,12 +91,45 @@ function read_trajectory(path, com = true)
     return coord, atom
 end
 
+function max_distance_for_pbc_dist(pbc)
+    volume = det(pbc)
+    a, b, c = eachcol(pbc)
+    dist1 = volume / norm(cross(a, b))
+    dist2 = volume / norm(cross(b, c))
+    dist3 = volume / norm(cross(c, a))
+    return min(dist1, dist2, dist3) / 2
+end
+
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= abs.(point1 .- point2)
     mul!(matmul_tmp, inv_pbc,dist_tmp)
     matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
     mul!(dist_tmp, pbc, matmul_tmp)
     return norm(dist_tmp)
+end
+
+function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+    dist_tmp .= abs.(point1 .- point2)
+    mul!(matmul_tmp, inv_pbc,dist_tmp)
+    matmul_tmp .-= floor.(matmul_tmp .+ 0.5) .+ 1
+    distance = pbc[1, 1] + pbc[2, 2] + pbc[3, 3]
+    for i in 1:3
+        for j in 1:3
+            for k in 1:3
+                mul!(dist_tmp, pbc, matmul_tmp)
+                new_distance = norm(dist_tmp)
+                if new_distance < distance
+                    distance = new_distance
+                end
+                matmul_tmp[3] += 1
+            end
+            matmul_tmp[3] -= 3
+            matmul_tmp[2] += 1
+        end
+        matmul_tmp[2] -= 3
+        matmul_tmp[1] += 1
+    end
+    return distance
 end
 
 function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 2}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
