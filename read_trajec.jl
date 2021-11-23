@@ -92,3 +92,31 @@ function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVec
     mul!(dist_tmp, pbc, matmul_tmp)
     return norm(dist_tmp)
 end
+
+function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 2}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+    index, distance = 1, pbc_dist(point1, group2[:, 1], pbc, inv_pbc, dist_tmp, matmul_tmp)
+    if size(group2)[2] > 1
+        for i in 2:size(group2)[2]
+            new_distance = pbc_dist(point1, group2[:, i], pbc, inv_pbc, dist_tmp, matmul_tmp)
+            if new_distance < distance
+                distance = new_distance
+                index = i
+            end
+        end
+    end
+    return index, distance
+end
+
+function next_neighbor(group1::Array{Float64, 2}, group2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+    atom_no_1 = size(group1)[2]
+    indices = zeros(Int, atom_no_1)
+    distances = zeros(Float64, atom_no_1)
+    for i in 1:atom_no_1
+        indices[i], distances[i] = next_neighbor(group1[:, i], group2, pbc, inv_pbc, dist_tmp, matmul_tmp)
+    end
+    return indices, distances
+end
+
+function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 1}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+    return 1, pbc_dist(point1, point2, pbc, inv_pbc, dist_tmp, matmul_tmp)
+end
