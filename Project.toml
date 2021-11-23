@@ -3,6 +3,12 @@ uuid = "58eb31b7-200e-41ba-85be-5c947a16f695"
 authors = ["Johnny Alexander Jimenez Siegert <johnny.jimenez-siegert@student.uni-halle.de> and contributors"]
 version = "0.1.0"
 
+[deps]
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+JLD = "4138dd39-2aa7-5051-a626-17a0bb65d9c8"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [compat]
 julia = "1"
 

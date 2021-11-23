@@ -1,5 +1,6 @@
 module TrajTools
 
-# Write your package code here.
+include("read_trajec.jl")
+include("calcs.jl")
 
 end
