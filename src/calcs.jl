@@ -1,5 +1,5 @@
 using FFTW
-using Statistics
+#using Statistics
 using StaticArrays
 
 function msd_for_corr_time(traj_msd, corr_time)
