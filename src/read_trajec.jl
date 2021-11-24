@@ -5,7 +5,8 @@ using StaticArrays
 using DelimitedFiles
 
 function read_pbc(pbc_path)
-    return transpose(readdlm(pbc_path))
+    pbc = transpose(readdlm(pbc_path))
+    return SMatrix{3,3}(pbc)
 end
 
 function xyz_to_coord(path, noa)
@@ -67,6 +68,32 @@ function remove_com(trajectory, atom)
      return trajectory .- sum(trajectory .* repeat(atom_masses', 3, 1), dims = 2)
 end
 
+function remove_com!(trajectory, atom)
+    atomic_mass_dict = Dict{String, Float64}(
+        "H" => 1.0079,
+        "Li" => 6.941,
+        "C" => 12.01,
+        "N" => 14.0067,
+        "O" => 15.9994,
+        "F" => 18.9984,
+        "Si" => 28.0855,
+        "P" => 30.9738,
+        "S" => 32.065,
+        "Cs" => 132.9055,
+        "Sn" => 118.71,
+    )
+
+    atom_masses = [atomic_mass_dict[entry] for entry in atom]
+    atom_masses /= sum(atom_masses)
+
+    com = zeros(MVector{3})
+    for i in 1:size(trajectory)[3]
+        mul!(com, trajectory[:, :, i], atom_masses)
+        trajectory[:, :, i] .-= com
+    end
+    return trajectory
+end
+
 function read_trajectory(path, com = true)
     auxiliarypath = path * ".jld"
     if isfile(auxiliarypath)
@@ -101,7 +128,7 @@ function max_distance_for_pbc_dist(pbc)
 end
 
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    dist_tmp .= abs.(point1 .- point2)
+    dist_tmp .= point1 .- point2
     mul!(matmul_tmp, inv_pbc,dist_tmp)
     matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
     mul!(dist_tmp, pbc, matmul_tmp)
