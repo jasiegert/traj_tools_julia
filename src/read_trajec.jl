@@ -3,6 +3,20 @@ using LinearAlgebra
 using StaticArrays
 using DelimitedFiles
 
+
+"""
+    Trajectory(coords, atomlabels, pbc, unwrapped = false, timestep_in_fs = 0.5, inv_pbc = inv(pbc))
+
+Combines trajectory information read from xyz-file.
+
+# Arguments
+- `coords::Array{Float64, 3}`: coordinates
+- `atomlabels::Vector{String}`: atom labels read from the first frame
+- `pbc::StaticArrays.SMatrix{3, 3, Float64, 9}`: periodic boundary conditions as a 3x3 StaticArray
+- `unwrapped::Bool`: whether or not the trajectory has been unwrapped
+- `timestep_in_fs::Real`: length of each time step in fs
+- `inv_pbc::StaticArrays.SMatrix{3, 3, Float64, 9}`: inverse of the pbc (stored seperately for performance reasons)
+"""
 struct Trajectory
     coords::Array{Float64, 3}
     atomlabels::Vector{String}
@@ -16,6 +30,14 @@ Trajectory(coords, atomlabels, pbc, unwrapped, timestep_in_fs) = Trajectory(coor
 Trajectory(coords, atomlabels, pbc, unwrapped) = Trajectory(coords, atomlabels, pbc, unwrapped, 0.5)
 Trajectory(coords, atomlabels, pbc) = Trajectory(coords, atomlabels, pbc, true)
 
+"""
+    read_pbc(pbc_path)
+
+Reads the periodic boundary conditions from a properly formatted text file.
+
+Periodic boundary conditions have to be represented as 3 lines corresponding to the 3 cell vectors, each containing 3 float values.
+pbc_path is a string containing the path to the pbc-file.
+"""
 function read_pbc(pbc_path)
     pbc = transpose(readdlm(pbc_path))
     return SMatrix{3,3}(pbc)
