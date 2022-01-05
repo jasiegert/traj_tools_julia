@@ -1,5 +1,4 @@
 using FFTW
-#using Statistics
 using StaticArrays
 
 function msd_for_corr_time(traj_msd, corr_time)
@@ -12,6 +11,10 @@ function msd_for_corr_time(traj_msd, corr_time)
         end
     end
     return a /= (size(traj_msd)[1] - corr_time) * size(traj_msd)[3]
+end
+
+function msd_direct(traj::Trajectory, targetatom, resolution, timerange)
+    return msd_direct(traj.coords, traj.timestep_in_fs, traj.atomlabels, targetatom, resolution, timerange)
 end
 
 function msd_direct(traj, timestep_fs, atom, targetatom, resolution, timerange)
