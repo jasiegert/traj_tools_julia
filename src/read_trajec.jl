@@ -3,6 +3,8 @@ using LinearAlgebra
 using StaticArrays
 using DelimitedFiles
 
+abstract type MDBox end
+
 
 """
     Trajectory(coords, atomlabels, pbc, unwrapped = false, timestep_in_fs = 0.5, inv_pbc = inv(pbc))
@@ -20,15 +22,29 @@ Combines trajectory information read from xyz-file.
 struct Trajectory
     coords::Array{Float64, 3}
     atomlabels::Vector{String}
-    pbc::StaticArrays.SMatrix{3, 3, Float64, 9}
+    mdbox::MDBox
     unwrapped::Bool
     timestep_in_fs::Real
-    inv_pbc::StaticArrays.SMatrix{3, 3, Float64, 9}
 end
 
-Trajectory(coords, atomlabels, pbc, unwrapped, timestep_in_fs) = Trajectory(coords, atomlabels, pbc, unwrapped, timestep_in_fs, inv(pbc))
-Trajectory(coords, atomlabels, pbc, unwrapped) = Trajectory(coords, atomlabels, pbc, unwrapped, 0.5)
-Trajectory(coords, atomlabels, pbc) = Trajectory(coords, atomlabels, pbc, true)
+Trajectory(coords, atomlabels, box, unwrapped) = Trajectory(coords, atomlabels, box, unwrapped, 0.5)
+Trajectory(coords, atomlabels, box) = Trajectory(coords, atomlabels, box, false)
+
+struct OrthorhombicBox <: MDBox
+    pbc::SVector{3, Float64}
+end
+
+OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SVector{3, Float64}(pbc))
+
+struct TriclinicBox <: MDBox
+    pbc::SMatrix{3, 3, Float64, 9}
+    inv_pbc::SMatrix{3, 3, Float64, 9}
+    realspace_tmp::MVector{3, Float64}
+    inversespace_tmp::MVector{3, Float64}
+end
+
+TriclinicBox(pbc::AbstractArray) = TriclinicBox(pbc, inv(pbc), zeros(MVector{3, Float64}), zeros(MVector{3, Float64}))
+
 
 """
     read_pbc(pbc_path)
@@ -40,17 +56,24 @@ pbc_path is a string containing the path to the pbc-file.
 """
 function read_pbc(pbc_path)
     pbc = transpose(readdlm(pbc_path))
-    return SMatrix{3,3}(pbc)
+    if size(pbc) == (1,3) || size(pbc) == (3,1)
+        return OrthorhombicBox(pbc)
+    elseif size(pbc) == (3,3)
+        return TriclinicBox(pbc)
+    else
+        error("pbc-file not formatted correctly")
+        return nothing
+    end
 end
 
 function read_trajectory(xyz_path::String, pbc_path::String, com = true)
-    pbc = read_pbc(pbc_path)
-    return read_trajectory(xyz_path, pbc, com)
+    mdbox = read_pbc(pbc_path)
+    return read_trajectory(xyz_path, mdbox, com)
 end
 
-function read_trajectory(xyz_path::String, pbc::AbstractArray, com = true)
-    coord, atom = xyz_or_jld_to_arrays(xyz_path, com)
-    traj = Trajectory(coord, atom, pbc)
+function read_trajectory(xyz_path::String, mdbox::MDBox, com = true)
+    coord, atomlabels = xyz_or_jld_to_arrays(xyz_path, com)
+    traj = Trajectory(coord, atomlabels, mdbox)
     return traj
 end
 

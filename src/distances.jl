@@ -2,7 +2,11 @@ using LinearAlgebra
 using StaticArrays
 
 function max_distance_for_pbc_dist(traj::Trajectory)
-    max_distance_for_pbc_dist(traj.pbc)
+    max_distance_for_pbc_dist(traj.mdbox)
+end
+
+function max_distance_for_pbc_dist(mdbox::MDBox)
+    max_distance_for_pbc_dist(mdbox.pbc)
 end
 
 function max_distance_for_pbc_dist(pbc::AbstractArray)
@@ -12,6 +16,10 @@ function max_distance_for_pbc_dist(pbc::AbstractArray)
     dist2 = volume / norm(cross(b, c))
     dist3 = volume / norm(cross(c, a))
     return min(dist1, dist2, dist3) / 2
+end
+
+function pbc_dist(point1, point2, mdbox::TriclinicBox)
+    pbc_dist(point1, point2, mdbox.pbc, mdbox.inv_pbc, mdbox.realspace_tmp, mdbox.inversespace_tmp)
 end
 
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
