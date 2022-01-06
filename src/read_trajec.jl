@@ -32,9 +32,10 @@ Trajectory(coords, atomlabels, box) = Trajectory(coords, atomlabels, box, false)
 
 struct OrthorhombicBox <: MDBox
     pbc::SVector{3, Float64}
+    dist_tmp::MVector{3, Float64}
 end
 
-OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SVector{3, Float64}(pbc))
+OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SVector{3, Float64}(pbc), zeros(MVector{3, Float64}))
 
 struct TriclinicBox <: MDBox
     pbc::SMatrix{3, 3, Float64, 9}

@@ -18,6 +18,15 @@ function max_distance_for_pbc_dist(pbc::AbstractArray)
     return min(dist1, dist2, dist3) / 2
 end
 
+function pbc_dist(point1, point2, mdbox::OrthorhombicBox)
+    for i in 1:3
+        mdbox.dist_tmp[i] = (point1[i] - point2[i]) / mdbox.pbc[i]
+        mdbox.dist_tmp[i] -= floor(mdbox.dist_tmp[i] + 0.5)
+        mdbox.dist_tmp[i] *= mdbox.pbc[i]
+    end
+    return norm(mdbox.dist_tmp)
+end
+
 function pbc_dist(point1, point2, mdbox::TriclinicBox)
     pbc_dist(point1, point2, mdbox.pbc, mdbox.inv_pbc, mdbox.realspace_tmp, mdbox.inversespace_tmp)
 end
