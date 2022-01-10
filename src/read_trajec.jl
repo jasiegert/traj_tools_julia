@@ -19,27 +19,28 @@ Combines trajectory information read from xyz-file.
 - `timestep_in_fs::Real`: length of each time step in fs
 - `inv_pbc::StaticArrays.SMatrix{3, 3, Float64, 9}`: inverse of the pbc (stored seperately for performance reasons)
 """
-struct Trajectory
+struct Trajectory{BoxType<:MDBox}
     coords::Array{Float64, 3}
     atomlabels::Vector{String}
-    mdbox::MDBox
+    mdbox::BoxType
     unwrapped::Bool
-    timestep_in_fs::Real
+    timestep_in_fs::Float64
 end
 
 Trajectory(coords, atomlabels, box, unwrapped) = Trajectory(coords, atomlabels, box, unwrapped, 0.5)
 Trajectory(coords, atomlabels, box) = Trajectory(coords, atomlabels, box, false)
 
 struct OrthorhombicBox <: MDBox
-    pbc::SVector{3, Float64}
+    pbc_matrix::SMatrix{3, 3, Float64, 9}
+    cell_parameters::SVector{3, Float64}
     dist_tmp::MVector{3, Float64}
 end
 
-OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SVector{3, Float64}(pbc), zeros(MVector{3, Float64}))
+OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SMatrix{3, 3, Float64, 9}(diagm(pbc)), SVector{3, Float64}(pbc), zeros(MVector{3, Float64}))
 
 struct TriclinicBox <: MDBox
-    pbc::SMatrix{3, 3, Float64, 9}
-    inv_pbc::SMatrix{3, 3, Float64, 9}
+    pbc_matrix::SMatrix{3, 3, Float64, 9}
+    inv_pbc_matrix::SMatrix{3, 3, Float64, 9}
     realspace_tmp::MVector{3, Float64}
     inversespace_tmp::MVector{3, Float64}
 end
@@ -57,10 +58,12 @@ The file pointed to by pbc_path has to be of either of two formats:
  - orthorhombic cell: 3 lines containing one float value each or 1 line containing three float values
 """
 function read_pbc(pbc_path)
-    pbc = transpose(readdlm(pbc_path))
+    pbc = readdlm(pbc_path)
     if size(pbc) == (1,3) || size(pbc) == (3,1)
+        pbc = vec(pbc)
         return OrthorhombicBox(pbc)
     elseif size(pbc) == (3,3)
+        pbc = transpose(pbc)
         return TriclinicBox(pbc)
     else
         error("pbc-file not formatted correctly")

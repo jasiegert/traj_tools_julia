@@ -45,16 +45,18 @@ function msd_fft(traj, timestep_fs, atom, targetatom, timerange)
 end
 
 function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins)
+    coord, atom, pbc = traj.coords, traj.atomlabels, traj.mdbox.pbc_matrix
     # Each bin i contains distances from distance_limits[i] to distance_limits[i+1]; distnace_mean[i] will be the average of both values
     distance_limits = range(d_min, d_max, length = bins + 1)
     distance_mean = (distance_limits[1:end-1] + distance_limits[2:end]) / 2
     # Shell volume of each bin i and overall ideal density used to normalize RDF
     shell_volumes = 4/3 * pi * (distance_limits[2:end].^3 - distance_limits[1:end-1].^3)
-    cell_volume = pbc[1,:] ⋅ (pbc[2,:] × pbc[3,:])
-    ideal_density = sum([1 for entry in atom if entry == atomtype1]) * sum([1 for entry in atom if entry == atomtype2]) / cell_volume
+    cell_volume = det(pbc) #pbc[1,:] ⋅ (pbc[2,:] × pbc[3,:])
+    ideal_density = count(atom .== atomtype1) * count(atom .== atomtype2) / cell_volume
     # Create distance histogram; delegate calculation of all distances and binning to create_dist_histogram_multi
     dist_histogram = create_dist_histogram_multi(traj, atomtype1, atomtype2, distance_limits)
-    return distance_mean, dist_histogram ./ (shell_volumes .* ideal_density .* size(coord)[3])
+    rdf = dist_histogram ./ (shell_volumes .* ideal_density .* size(coord)[3])
+    return distance_mean, rdf
 end
 
 function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, distance_limits)
@@ -63,8 +65,6 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
     # Copy trajectories of specified atom types for later use; using @view here causes a lot more memory usage
     coord1 = coord[:, atom .== atomtype1, :]
     coord2 = coord[:, atom .== atomtype2, :]
-    pbc_static = SMatrix{3,3,Float64}(pbc)
-    inv_pbc_static = inv(pbc_static)
     d_min, d_max, d_step = distance_limits[1], distance_limits[end], convert(Float64, distance_limits.step)
     # Split length of trajecgory $size(coord)[3] into roughly equal chunks, one for each available thread
     thread_limits = convert.(Int, floor.(range(1, size(coord)[3] + 1, length = Threads.nthreads() + 1)))
@@ -81,7 +81,7 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
             for x in eachcol(coord1[:, :, i])
                 for y in eachcol(coord2[:, :, i])
                     distance = pbc_dist(x, y, mdbox_thread)
-                    bin!(dist_histogram, distance, d_min, d_max, d_step)
+                    bin!(dist_histogram_thread, distance, d_min, d_max, d_step)
                 end
             end
         end
