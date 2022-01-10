@@ -59,6 +59,7 @@ pbc_path is a string containing the path to the pbc-file.
 function read_pbc(pbc_path)
     pbc = readdlm(pbc_path)
     if size(pbc) == (1,3) || size(pbc) == (3,1)
+        pbc = vec(pbc)
         return OrthorhombicBox(pbc)
     elseif size(pbc) == (3,3)
         pbc = transpose(pbc)
