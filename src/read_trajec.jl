@@ -52,8 +52,9 @@ TriclinicBox(pbc::AbstractArray) = TriclinicBox(pbc, inv(pbc), zeros(MVector{3, 
 
 Reads the periodic boundary conditions from a properly formatted text file.
 
-Periodic boundary conditions have to be represented as 3 lines corresponding to the 3 cell vectors, each containing 3 float values.
-pbc_path is a string containing the path to the pbc-file.
+The file pointed to by pbc_path has to be of either of two formats:
+ - arbitrary cell: 3 lines corresponding to the 3 cell vectors, each containing 3 float values
+ - orthorhombic cell: 3 lines containing one float value each or 1 line containing three float values
 """
 function read_pbc(pbc_path)
     pbc = transpose(readdlm(pbc_path))
@@ -67,15 +68,26 @@ function read_pbc(pbc_path)
     end
 end
 
-function read_trajectory(xyz_path::String, pbc_path::String, com = true)
-    mdbox = read_pbc(pbc_path)
-    return read_trajectory(xyz_path, mdbox, com)
-end
+"""
+    read_trajectory(xyz_path, pbc_path, removecom = true)
 
-function read_trajectory(xyz_path::String, mdbox::MDBox, com = true)
-    coord, atomlabels = xyz_or_jld_to_arrays(xyz_path, com)
-    traj = Trajectory(coord, atomlabels, mdbox)
-    return traj
+Reads a trajectory from an xyz-file and its periodic boundary conditions from a text file.
+
+For the format of the pbc-file, see [`read_pbc(pbc_path)`](@ref).
+"""
+function read_trajectory(xyz_path::String, pbc_path::String, com = true, unwrap = true)
+    mdbox = read_pbc(pbc_path)
+    coords, atomlabels = xyz_or_jld_to_arrays(xyz_path)
+    
+    if com
+        remove_com!(coords, atomlabels)
+    end
+
+    if unwrap
+        unwrap_trajectory!(coords, mdbox)
+    end
+
+    return Trajectory(coords, atomlabels, mdbox, unwrap)
 end
 
 function xyz_to_coord(path, noa)
@@ -116,7 +128,12 @@ function xyz_to_ar(path)
     return coord, atomlabels
 end
 
-function remove_com!(trajectory, atom)
+"""
+    remove_com!(coords, atomlabels)
+
+Removes the center of mass (com) movement from the trajectory coords by setting the com to (0, 0, 0) in each frame.
+"""
+function remove_com!(coords, atom)
     atomic_mass_dict = Dict{String, Float64}(
         "H" => 1.0079,
         "Li" => 6.941,
@@ -135,14 +152,40 @@ function remove_com!(trajectory, atom)
     atom_masses /= sum(atom_masses)
 
     com = zeros(MVector{3})
-    for i in 1:size(trajectory)[3]
-        mul!(com, trajectory[:, :, i], atom_masses)
-        trajectory[:, :, i] .-= com
+    for i in 1:size(coords)[3]
+        mul!(com, coords[:, :, i], atom_masses)
+        coords[:, :, i] .-= com
     end
-    return trajectory
+    return coords
 end
 
-function xyz_or_jld_to_arrays(path, com = true)
+function unwrap_trajectory(coords, mdbox::MDBox)
+    coords_unwrapped = deepcopy(coords)
+    unwrap_trajectory!(coords_unwrapped, mdbox)
+    return coords_unwrapped
+end
+
+function unwrap_trajectory!(coords, mdbox::MDBox)
+    pbc = mdbox.pbc
+    if size(pbc) == (3,)
+        pbc = diagm(pbc)
+    end
+    inv_pbc = inv(pbc)
+
+    to_be_wrapped = mdbox.inversespace_tmp
+    for frame in 1:size(coords)[3]-1
+        for atom in 1:size(coords)[2]
+            @views mdbox.realspace_tmp .= coords[:, atom, frame + 1] .- coords[:, atom, frame]
+            mul!(mdbox.inversespace_tmp, inv_pbc, mdbox.realspace_tmp)
+            to_be_wrapped .= floor.(mdbox.inversespace_tmp .+ 0.5)
+            mul!(mdbox.realspace_tmp, pbc, to_be_wrapped)
+            coords[:, atom, frame + 1] .-= mdbox.realspace_tmp
+        end
+    end
+end
+
+
+function xyz_or_jld_to_arrays(path)
     auxiliarypath = path * ".jld"
     if isfile(auxiliarypath)
         println("Auxiliary file $auxiliarypath exists. Reading...")
@@ -159,10 +202,5 @@ function xyz_or_jld_to_arrays(path, com = true)
         return nothing, nothing
     end
 
-    if com == true
-        remove_com!(coord, atom)
-    end
-
     return coord, atom
 end
-
