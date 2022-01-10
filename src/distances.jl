@@ -6,7 +6,7 @@ function max_distance_for_pbc_dist(traj::Trajectory)
 end
 
 function max_distance_for_pbc_dist(mdbox::MDBox)
-    max_distance_for_pbc_dist(mdbox.pbc)
+    max_distance_for_pbc_dist(mdbox.pbc_matrix)
 end
 
 function max_distance_for_pbc_dist(pbc::AbstractArray)
@@ -20,15 +20,15 @@ end
 
 function pbc_dist(point1, point2, mdbox::OrthorhombicBox)
     for i in 1:3
-        mdbox.dist_tmp[i] = (point1[i] - point2[i]) / mdbox.pbc[i]
+        mdbox.dist_tmp[i] = (point1[i] - point2[i]) / mdbox.cell_parameters[i]
         mdbox.dist_tmp[i] -= floor(mdbox.dist_tmp[i] + 0.5)
-        mdbox.dist_tmp[i] *= mdbox.pbc[i]
+        mdbox.dist_tmp[i] *= mdbox.cell_parameters[i]
     end
     return norm(mdbox.dist_tmp)
 end
 
 function pbc_dist(point1, point2, mdbox::TriclinicBox)
-    pbc_dist(point1, point2, mdbox.pbc, mdbox.inv_pbc, mdbox.realspace_tmp, mdbox.inversespace_tmp)
+    pbc_dist(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
 end
 
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
@@ -63,43 +63,16 @@ function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = 
     return distance
 end
 
-#function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 2}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-function next_neighbor(point1, group2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+function next_neighbor(point1, group2, mdbox::MDBox)
     point2 = @view group2[:, 1]
-    index, distance = 1, pbc_dist(point1, point2, pbc, inv_pbc, dist_tmp, matmul_tmp)
-    #if size(group2)[2] > 1
-        for i in 2:size(group2)[2]
-            point2 = @view group2[:, i]
-            new_distance = pbc_dist(point1, point2, pbc, inv_pbc, dist_tmp, matmul_tmp)
-            if new_distance < distance
-                distance = new_distance
-                index = i
-            end
+    index, distance = 1, pbc_dist(point1, pointi2, mdbox)
+    for i in 2:size(group2)[2]
+        point2 = @view group2[:, i]
+        new_distance = pbc_dist(point1, point2, mdbox)
+        if new_distance < distance
+            distance = new_distance
+            index = i
         end
-    #end
+    end
     return index, distance
-end
-
-function next_neighbor(group1::Array{Float64, 2}, group2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    atom_no_1 = size(group1)[2]
-    indices = zeros(Int, atom_no_1)
-    distances = zeros(Float64, atom_no_1)
-    for i in 1:atom_no_1
-        indices[i], distances[i] = next_neighbor(group1[:, i], group2, pbc, inv_pbc, dist_tmp, matmul_tmp)
-    end
-    return indices, distances
-end
-
-function next_neighbor(point1::Array{Float64, 1}, group2::Array{Float64, 1}, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    return 1, pbc_dist(point1, point2, pbc, inv_pbc, dist_tmp, matmul_tmp)
-end
-
-function next_neighbor!(indices_out, distances_out, group1::Array{Float64, 2}, group2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    atom_no_1 = size(group1)[2]
-    indices = zeros(Int, atom_no_1)
-    distances = zeros(Float64, atom_no_1)
-    for i in 1:atom_no_1
-        indices_out[i], distances_out[i] = next_neighbor(group1[:, i], group2, pbc, inv_pbc, dist_tmp, matmul_tmp)
-    end
-    return nothing #indices, distances
 end
