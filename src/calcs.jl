@@ -1,7 +1,7 @@
 using FFTW
 using StaticArrays
 
-function msd_for_corr_time(traj_msd, corr_time)
+function msd_for_corr_time(traj_msd, corr_time, unwrapped = false)
     a = 0
     for k in 1:size(traj_msd)[3]
         for j in 1:size(traj_msd)[2]
@@ -14,14 +14,18 @@ function msd_for_corr_time(traj_msd, corr_time)
 end
 
 function msd_direct(traj::Trajectory, targetatom, resolution, timerange)
+    if !traj.unwrapped
+        println("Trajectory is not unwrapped -> MSD might be faulty.")
+    end
+
     return msd_direct(traj.coords, traj.timestep_in_fs, traj.atomlabels, targetatom, resolution, timerange)
 end
 
-function msd_direct(traj, timestep_fs, atom, targetatom, resolution, timerange)
-    timesteps = size(traj)[3]
+function msd_direct(coords, timestep_fs, atom, targetatom, resolution, timerange)
+    timesteps = size(coords)[3]
     corr_time_list = range(0, length = resolution, step = round(Int, timesteps * timerange / resolution))
     # Permuting the trajectory to shape (timesteps, dimensions, atoms) is faster, because it allows the innermost loop over the timesteps to be along the first dimension
-    traj_msd = permutedims(traj[:, atom .== targetatom, :], [3, 1, 2])
+    traj_msd = permutedims(coords[:, atom .== targetatom, :], [3, 1, 2])
     msd_result = Array{Float64, 1}(undef, resolution)
     Threads.@threads for i in 1:resolution
         msd_result[i] = msd_for_corr_time(traj_msd, corr_time_list[i])
