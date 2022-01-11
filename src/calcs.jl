@@ -101,21 +101,41 @@ function bin!(dist_histogram, distance, d_min, d_max, d_step)
     end
 end
 
+function autocorrFFT(inputarray)
+    arraylength = size(inputarray)[end]
+    paddedlength = arraylength * 2 + 1
+    paddedarray = zeros(eltype(inputarray), size(inputarray)[1:end-1]..., paddedlength)
+    @views paddedarray[:, :, 1:arraylength] = inputarray
+
+    FTresult = rfft(paddedarray, 3)
+    FTresult .= FTresult .* conj(FTresult)
+    autocorr = irfft(FTresult, paddedlength, 3)[:, :, 1:arraylength]
+    for i in 1:arraylength
+        @views autocorr[:, :, i] ./= (arraylength - i + 1)
+    end
+    return autocorr
+end
+
 function oacf(traj::Trajectory, atomtype1, atomtype2)
-   neighborsfirstframe = zeros(Int64, count(traj.atomlabels .== atomtype1))
-   frame1type2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
-   @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
-       neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, frame1type2, traj.mdbox)[1]
-   end
-   coordstype1 = @view traj.coords[:, traj.atomlabels .== atomtype1, :]
-   coordstype2 = @view traj.coords[:, traj.atomlabels .== atomtype2, :]
-   bondvectors = zeros(Float64, 3, count(traj.atomlabels .== atomtype1), size(traj.coords)[3])
-   @views for frame in 1:size(traj.coords)[3]
-       for atom1 in 1:count(traj.atomlabels .== atomtype1)
-           neighborindex = neighborsfirstframe[atom1]
-           coord1 = coordstype1[:, atom1, frame]
-           coord2 = coordstype2[:, neighborindex, frame]
-           bondvectors[:, atom1, frame] .= coord1 .- coord2
-       end
-   end
+    neighborsfirstframe = zeros(Int64, count(traj.atomlabels .== atomtype1))
+    frame1type2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
+    @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
+        neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, frame1type2, traj.mdbox)[1]
+    end
+    coordstype1 = @view traj.coords[:, traj.atomlabels .== atomtype1, :]
+    coordstype2 = @view traj.coords[:, traj.atomlabels .== atomtype2, :]
+    bondvectors = zeros(Float64, 3, count(traj.atomlabels .== atomtype1), size(traj.coords)[3])
+    @views for frame in 1:size(traj.coords)[3]
+        for atom1 in 1:count(traj.atomlabels .== atomtype1)
+            neighborindex = neighborsfirstframe[atom1]
+            coord1 = coordstype1[:, atom1, frame]
+            coord2 = coordstype2[:, neighborindex, frame]
+            bondvectors[:, atom1, frame] .= TrajTools.minimum_image_vector(coord1, coord2, traj.mdbox)
+            normalize!(bondvectors[:, atom1, frame])
+        end
+    end
+    auto1 = autocorrFFT(bondvectors)
+    oacf = vec(mean(sum(auto1, dims=1), dims = 2))
+    time_oacf = (1:arraylength) * traj.timestep_in_fs
+    return bondvectors, time_oacf, oacf
 end
