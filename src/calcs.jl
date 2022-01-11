@@ -102,18 +102,20 @@ function bin!(dist_histogram, distance, d_min, d_max, d_step)
 end
 
 function oacf(traj::Trajectory, atomtype1, atomtype2)
-    neighborsfirstframe = zeros(Int64, count(traj.atomlabels .== atomtype1))
-    coordstype2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
-    @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
-        neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, coordstype2, traj.mdbox)[1]
-    end
-    bondvectors = zeros(Float64, 3, count(traj.atomlabels .== atomtype1), size(traj.coords)[3])
-    @views for frame in 1:size(traj.coords)[3]
-        for atom1 in 1:count(traj.atomlabels .== atomtype1)
-            neighborindex = neighborsfirstframe[atom1]
-            coord1 = coordstype1[:, atom1, frame]
-            coord2 = coordstype2[:, neighborindex, frame]
-            bondvectors[:, atom1, frame] .= coord1 .- coord2
-        end
-    end
+   neighborsfirstframe = zeros(Int64, count(traj.atomlabels .== atomtype1))
+   frame1type2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
+   @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
+       neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, frame1type2, traj.mdbox)[1]
+   end
+   coordstype1 = @view traj.coords[:, traj.atomlabels .== atomtype1, :]
+   coordstype2 = @view traj.coords[:, traj.atomlabels .== atomtype2, :]
+   bondvectors = zeros(Float64, 3, count(traj.atomlabels .== atomtype1), size(traj.coords)[3])
+   @views for frame in 1:size(traj.coords)[3]
+       for atom1 in 1:count(traj.atomlabels .== atomtype1)
+           neighborindex = neighborsfirstframe[atom1]
+           coord1 = coordstype1[:, atom1, frame]
+           coord2 = coordstype2[:, neighborindex, frame]
+           bondvectors[:, atom1, frame] .= coord1 .- coord2
+       end
+   end
 end
