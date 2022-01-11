@@ -39,6 +39,18 @@ function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVec
     return norm(dist_tmp)
 end
 
+function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
+    minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
+end
+
+function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+    dist_tmp .= point1 .- point2
+    mul!(matmul_tmp, inv_pbc,dist_tmp)
+    matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
+    mul!(dist_tmp, pbc, matmul_tmp)
+    return dist_tmp
+end
+
 function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= abs.(point1 .- point2)
     mul!(matmul_tmp, inv_pbc,dist_tmp)
@@ -65,7 +77,7 @@ end
 
 function next_neighbor(point1, group2, mdbox::MDBox)
     point2 = @view group2[:, 1]
-    index, distance = 1, pbc_dist(point1, pointi2, mdbox)
+    index, distance = 1, pbc_dist(point1, point2, mdbox)
     for i in 2:size(group2)[2]
         point2 = @view group2[:, i]
         new_distance = pbc_dist(point1, point2, mdbox)
