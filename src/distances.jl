@@ -27,21 +27,21 @@ function pbc_dist(point1, point2, mdbox::OrthorhombicBox)
     return norm(mdbox.dist_tmp)
 end
 
-function pbc_dist(point1, point2, mdbox::TriclinicBox)
-    pbc_dist(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
-end
+#function pbc_dist(point1, point2, mdbox::TriclinicBox)
+#    pbc_dist(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
+#end
 
-function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    dist_tmp .= point1 .- point2
-    mul!(matmul_tmp, inv_pbc,dist_tmp)
-    matmul_tmp .-= round.(matmul_tmp)
-    mul!(dist_tmp, pbc, matmul_tmp)
-    return norm(dist_tmp)
-end
+#function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
+#    dist_tmp .= point1 .- point2
+#    mul!(matmul_tmp, inv_pbc,dist_tmp)
+#    matmul_tmp .-= round.(matmul_tmp)
+#    mul!(dist_tmp, pbc, matmul_tmp)
+#    return norm(dist_tmp)
+#end
 
 # ugliest implementation yet, but also fast
 # who needs arrays anyways
-function pbc_dist_direct(p1, p2, pbc, inv_pbc)
+function pbc_dist(p1, p2, pbc, inv_pbc)
     # pbc (and inv_pbc by extension) have to be upper-triagonal now!
     # direct distance between the two points
         # d = p1 .- p300
@@ -62,8 +62,8 @@ function pbc_dist_direct(p1, p2, pbc, inv_pbc)
     return n
 end
 
-function pbc_dist_direct(p1, p2, mdbox::TriclinicBox)
-    pbc_dist_direct(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
+function pbc_dist(p1, p2, mdbox::TriclinicBox)
+    pbc_dist(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
 end
 
 function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
