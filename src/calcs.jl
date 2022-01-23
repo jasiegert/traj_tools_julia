@@ -1,5 +1,6 @@
 using FFTW
 using StaticArrays
+using Statistics
 
 function msd_for_corr_time(traj_msd, corr_time, unwrapped = false)
     a = 0
@@ -117,14 +118,18 @@ function autocorrFFT(inputarray)
 end
 
 function oacf(traj::Trajectory, atomtype1, atomtype2)
-    neighborsfirstframe = zeros(Int64, count(traj.atomlabels .== atomtype1))
+    atomno1 = count(traj.atomlabels .== atomtype1)
+    atomno2 = count(traj.atomlabels .== atomtype2)
+    frameno = size(traj.coords)[3]
+
+    neighborsfirstframe = zeros(Int64, atomno1)
     frame1type2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
     @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
         neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, frame1type2, traj.mdbox)[1]
     end
     coordstype1 = @view traj.coords[:, traj.atomlabels .== atomtype1, :]
     coordstype2 = @view traj.coords[:, traj.atomlabels .== atomtype2, :]
-    bondvectors = zeros(Float64, 3, count(traj.atomlabels .== atomtype1), size(traj.coords)[3])
+    bondvectors = zeros(Float64, 3, atomno1, frameno)
     @views for frame in 1:size(traj.coords)[3]
         for atom1 in 1:count(traj.atomlabels .== atomtype1)
             neighborindex = neighborsfirstframe[atom1]
@@ -135,7 +140,9 @@ function oacf(traj::Trajectory, atomtype1, atomtype2)
         end
     end
     auto1 = autocorrFFT(bondvectors)
+    # orientational auto correlation
     oacf = vec(mean(sum(auto1, dims=1), dims = 2))
-    time_oacf = (1:arraylength) * traj.timestep_in_fs
-    return bondvectors, time_oacf, oacf
+    # time in ps
+    time_oacf = (1:frameno) * traj.timestep_in_fs / 1E3
+    return time_oacf, oacf
 end

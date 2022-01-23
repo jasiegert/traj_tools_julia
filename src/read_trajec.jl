@@ -59,12 +59,23 @@ The file pointed to by pbc_path has to be of either of two formats:
 """
 function read_pbc(pbc_path)
     pbc = readdlm(pbc_path)
+    # if 3 float values are found, turn them into a vector and return an orthorhombic box
     if size(pbc) == (1,3) || size(pbc) == (3,1)
         pbc = vec(pbc)
         return OrthorhombicBox(pbc)
+    # if 3x3 float values of correct shape, return a triclinic box
     elseif size(pbc) == (3,3)
+        # pbc has to be determined by 6 float values -> should be lower triangular:
+        # x1  0  0
+        # x2 y2  0
+        # x3 y3 z3
+        # note: pbc in mdbox will be transposed, thus upper triangular
         pbc = transpose(pbc)
-        return TriclinicBox(pbc)
+        if pbc == UpperTriangular(pbc)
+            return TriclinicBox(pbc)
+        else
+            error("pbc-file not formatted correctly -> 3x3 matrix has to be lower triangular")
+        end
     else
         error("pbc-file not formatted correctly")
         return nothing

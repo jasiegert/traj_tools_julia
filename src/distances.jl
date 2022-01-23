@@ -34,9 +34,36 @@ end
 function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= point1 .- point2
     mul!(matmul_tmp, inv_pbc,dist_tmp)
-    matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
+    matmul_tmp .-= round.(matmul_tmp)
     mul!(dist_tmp, pbc, matmul_tmp)
     return norm(dist_tmp)
+end
+
+# ugliest implementation yet, but also fast
+# who needs arrays anyways
+function pbc_dist_direct(p1, p2, pbc, inv_pbc)
+    # pbc (and inv_pbc by extension) have to be upper-triagonal now!
+    # direct distance between the two points
+        # d = p1 .- p300
+    d1, d2, d3 = p1[1] - p2[1], p1[2] - p2[2], p1[3] - p2[3]
+    # convert distance to relative coordinates and save rounded values
+        # m = round.(inv_pbc * d)
+    m1 = round(inv_pbc[1, 1] * d1 + inv_pbc[1, 2] * d2 + inv_pbc[1, 3] * d3)
+    m2 = round(inv_pbc[2, 2] * d2 + inv_pbc[2, 3] * d3)
+    m3 = round(inv_pbc[3, 3] * d3)
+    # convert rounded relative distance into real distance and subtract it from the real distance; return norm
+        # d -= pbc * m
+        # n = norm(d)
+    n = sqrt(
+        (d1 - pbc[1, 1] * m1 - pbc[1, 2] * m2 - pbc[1, 3] * m3)^2 + 
+        (d2 - pbc[2, 2] * m2 - pbc[2, 3] * m3)^2 + 
+        (d3 - pbc[3, 3] * m3)^2
+        )
+    return n
+end
+
+function pbc_dist_direct(p1, p2, mdbox::TriclinicBox)
+    pbc_dist_direct(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
 end
 
 function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
