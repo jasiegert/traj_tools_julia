@@ -94,6 +94,10 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
     return dist_histogram
 end
 
+function bin!(dist_histogram, distance, d_range::D) where {D < StepRangeLen}
+    bin!(dist_histogram, distance, d_range[1], d_range[end], convert(Float64, d_range.step))
+end
+
 function bin!(dist_histogram, distance, d_min, d_max, d_step)
     # each bin i ∈ [1, bins] covers distances from (d_min + d_step * (i-1)) to (d_min + d_step * i)
     if d_min < distance < d_max
