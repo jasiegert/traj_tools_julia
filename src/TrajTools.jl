@@ -2,6 +2,7 @@ module TrajTools
 
 export Trajectory
 export dist_tmp, matmul_tmp
+export pbc_dist, next_neighbor, minimum_image_vector
 
 include("read_trajec.jl")
 include("distances.jl")
