@@ -1,6 +1,13 @@
 using LinearAlgebra
 using StaticArrays
 
+"""
+    max_distance_for_pbc_dist(traj::Trajectory)
+    max_distance_for_pbc_dist(mdbox::MDBox)
+    max_distance_for_pbc_dist(pbc::AbstractArray)
+
+Calculates half of the shortest box diameter. For distances above this value, [`pbc_dist(point1, point2, mdbox)`](@ref) might give results that are too large.
+"""
 function max_distance_for_pbc_dist(traj::Trajectory)
     max_distance_for_pbc_dist(traj.mdbox)
 end
@@ -18,6 +25,18 @@ function max_distance_for_pbc_dist(pbc::AbstractArray)
     return min(dist1, dist2, dist3) / 2
 end
 
+"""
+    pbc_dist(point1, point2, mdbox)
+
+Calculates the distance between two points in a simulation box according to the minimum image convention.
+
+For non-orthorhombic boxes, this is only accurate up to half of the shortest box diameter. This limit can be calculated with [`max_distance_for_pbc_dist(traj::Trajectory)`](@ref).
+
+# Arguments
+    - point1::AbstractVector: coordinates in a vector of length 3
+    - point2::AbstractVector: coordinates in a vector of length 3
+    - mdbox::MDBox: simulation box
+"""
 function pbc_dist(point1, point2, mdbox::OrthorhombicBox)
     for i in 1:3
         mdbox.dist_tmp[i] = (point1[i] - point2[i]) / mdbox.cell_parameters[i]
@@ -38,6 +57,10 @@ end
 #    mul!(dist_tmp, pbc, matmul_tmp)
 #    return norm(dist_tmp)
 #end
+
+function pbc_dist(p1, p2, mdbox::TriclinicBox)
+    pbc_dist(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
+end
 
 # ugliest implementation yet, but also fast
 # who needs arrays anyways
@@ -62,10 +85,13 @@ function pbc_dist(p1, p2, pbc, inv_pbc)
     return n
 end
 
-function pbc_dist(p1, p2, mdbox::TriclinicBox)
-    pbc_dist(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
-end
+"""
+    minimum_image_vector(point1, point2, mdbox::MDBox)
 
+Returns the vector connecting two points according to the minimum image convenction.
+
+For distances above half of the shortest box diameter (see [`max_distance_for_pbc_dist(traj::Trajectory)`](@ref)), this might give erroneous results. 
+"""
 function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
     minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
 end

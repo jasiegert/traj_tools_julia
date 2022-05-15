@@ -7,5 +7,6 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Reading trajectories" => "trajecio.md",
+        "API" => "api.md",
         ]
     )

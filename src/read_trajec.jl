@@ -7,17 +7,16 @@ abstract type MDBox end
 
 
 """
-    Trajectory(coords, atomlabels, pbc, unwrapped = false, timestep_in_fs = 0.5, inv_pbc = inv(pbc))
+    Trajectory(coords, atomlabels, mdbox, unwrapped = false, timestep_in_fs = 0.5)
 
-Combines trajectory information read from xyz-file.
+Combines trajectory information read from xyz-file. Typically created by [`read_trajectory`](@ref).
 
 # Arguments
 - `coords::Array{Float64, 3}`: coordinates
 - `atomlabels::Vector{String}`: atom labels read from the first frame
-- `pbc::StaticArrays.SMatrix{3, 3, Float64, 9}`: periodic boundary conditions as a 3x3 StaticArray
+- `mdbox::MDBox`: information on the simulation box (periodic boundary conditions)
 - `unwrapped::Bool`: whether or not the trajectory has been unwrapped
 - `timestep_in_fs::Real`: length of each time step in fs
-- `inv_pbc::StaticArrays.SMatrix{3, 3, Float64, 9}`: inverse of the pbc (stored seperately for performance reasons)
 """
 struct Trajectory{BoxType<:MDBox}
     coords::Array{Float64, 3}
@@ -30,6 +29,11 @@ end
 Trajectory(coords, atomlabels, box, unwrapped) = Trajectory(coords, atomlabels, box, unwrapped, 0.5)
 Trajectory(coords, atomlabels, box) = Trajectory(coords, atomlabels, box, false)
 
+"""
+    OrthorhombicBox(pbc)
+
+Orthorhombic simulation box. Expects the periodic boundary conditions as a 3x3 matrix.
+"""
 struct OrthorhombicBox <: MDBox
     pbc_matrix::SMatrix{3, 3, Float64, 9}
     cell_parameters::SVector{3, Float64}
@@ -38,6 +42,11 @@ end
 
 OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SMatrix{3, 3, Float64, 9}(diagm(pbc)), SVector{3, Float64}(pbc), zeros(MVector{3, Float64}))
 
+"""
+    TriclinicBox(pbc)
+
+Triclinic simulation box. Expects the periodic boundary conditions as a 3x3 matrix.
+"""
 struct TriclinicBox <: MDBox
     pbc_matrix::SMatrix{3, 3, Float64, 9}
     inv_pbc_matrix::SMatrix{3, 3, Float64, 9}
@@ -83,13 +92,13 @@ function read_pbc(pbc_path)
 end
 
 """
-    read_trajectory(xyz_path, pbc_path, removecom = true)
+    read_trajectory(xyz_path, pbc_path, removecom = true, unwrap = false)
 
 Reads a trajectory from an xyz-file and its periodic boundary conditions from a text file.
 
 For the format of the pbc-file, see [`read_pbc(pbc_path)`](@ref).
 """
-function read_trajectory(xyz_path::String, pbc_path::String, com = true, unwrap = true)
+function read_trajectory(xyz_path::String, pbc_path::String, com = true, unwrap = false)
     mdbox = read_pbc(pbc_path)
     coords, atomlabels = xyz_or_jld_to_arrays(xyz_path)
     
@@ -173,12 +182,22 @@ function remove_com!(coords, atom)
     return coords
 end
 
+"""
+    unwrap_trajectory(coords, mdbox)
+
+Unwraps trajectory, so that atoms can freely move outside of the simulation box.
+"""
 function unwrap_trajectory(coords, mdbox::MDBox)
     coords_unwrapped = deepcopy(coords)
     unwrap_trajectory!(coords_unwrapped, mdbox)
     return coords_unwrapped
 end
 
+"""
+    unwrap_trajectory!(coords, mdbox)
+
+Unwraps trajectory, so that atoms can freely move outside of the simulation box.
+"""
 function unwrap_trajectory!(coords, mdbox::MDBox)
     pbc = mdbox.pbc
     if size(pbc) == (3,)
@@ -198,7 +217,13 @@ function unwrap_trajectory!(coords, mdbox::MDBox)
     end
 end
 
+"""
+    xyz_or_jld_to_arrays(path::String)
 
+Reads the contents of a trajectory file in xyz-format and returns coordinates (as an array) and atom labels (as a vector).
+
+For a file 'traj.xyz' an auxiliary file 'traj.xyz.jld' will be written. Should this file already exist, it will be read instead of the xyz-file.
+"""
 function xyz_or_jld_to_arrays(path)
     auxiliarypath = path * ".jld"
     if isfile(auxiliarypath)
