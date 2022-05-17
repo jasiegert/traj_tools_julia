@@ -176,7 +176,7 @@ function remove_com!(coords, atom)
 
     for i in 1:size(coords)[2]
         com = sum(coords[:, i] .* atom_masses)
-        coords .-= Scalar{SVector{3, Float64}}(com)
+        coords[:, i] .-= Scalar{SVector{3, Float64}}(com)
     end
     return coords
 end

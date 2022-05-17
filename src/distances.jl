@@ -129,10 +129,10 @@ function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = 
 end
 
 function next_neighbor(point1, group2, mdbox::MDBox)
-    point2 = @view group2[:, 1]
+    point2 = group2[1]
     index, distance = 1, pbc_dist(point1, point2, mdbox)
-    for i in 2:size(group2)[2]
-        point2 = @view group2[:, i]
+    for i in 2:size(group2)[1]
+        point2 = group2[i]
         new_distance = pbc_dist(point1, point2, mdbox)
         if new_distance < distance
             distance = new_distance

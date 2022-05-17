@@ -2,16 +2,15 @@ using FFTW
 using StaticArrays
 using Statistics
 
-function msd_for_corr_time(traj_msd, corr_time, unwrapped = false)
+function msd_for_corr_time(coords, corr_time, unwrapped = false)
     a = 0
-    for k in 1:size(traj_msd)[3]
-        for j in 1:size(traj_msd)[2]
-            for i in 1:size(traj_msd)[1]-corr_time
-                a += (traj_msd[i+corr_time, j, k] - traj_msd[i, j, k])^2
-            end
+    atom_no, frame_no = size(coords)
+    for atom in 1:atom_no
+        for frame in 1:frame_no-corr_time
+            @inbounds a += sum( x -> x^2, coords[atom, frame] .- coords[atom, frame + corr_time] )
         end
     end
-    return a /= (size(traj_msd)[1] - corr_time) * size(traj_msd)[3]
+    return a /= (frame_no - corr_time) * atom_no
 end
 
 function msd_direct(traj::Trajectory, targetatom, resolution, timerange)
@@ -23,13 +22,14 @@ function msd_direct(traj::Trajectory, targetatom, resolution, timerange)
 end
 
 function msd_direct(coords, timestep_fs, atom, targetatom, resolution, timerange)
-    timesteps = size(coords)[3]
+    timesteps = size(coords)[2]
     corr_time_list = range(0, length = resolution, step = round(Int, timesteps * timerange / resolution))
     # Permuting the trajectory to shape (timesteps, dimensions, atoms) is faster, because it allows the innermost loop over the timesteps to be along the first dimension
-    traj_msd = permutedims(coords[:, atom .== targetatom, :], [3, 1, 2])
+    #traj_msd = permutedims(coords[:, atom .== targetatom, :], [3, 1, 2])
+    coords_target = @view coords[atom .== targetatom, :]
     msd_result = Array{Float64, 1}(undef, resolution)
     Threads.@threads for i in 1:resolution
-        msd_result[i] = msd_for_corr_time(traj_msd, corr_time_list[i])
+        msd_result[i] = msd_for_corr_time(coords_target, corr_time_list[i])
     end
     # correlation time in ps, MSD in A^2
     return corr_time_list * timestep_fs / 1000, msd_result
@@ -56,7 +56,7 @@ function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins)
     ideal_density = count(atom .== atomtype1) * count(atom .== atomtype2) / cell_volume
     # Create distance histogram; delegate calculation of all distances and binning to create_dist_histogram_multi
     dist_histogram = create_dist_histogram_multi(traj, atomtype1, atomtype2, distance_limits)
-    rdf = dist_histogram ./ (shell_volumes .* ideal_density .* size(coord)[3])
+    rdf = dist_histogram ./ (shell_volumes .* ideal_density .* size(coord)[2])
     return distance_mean, rdf
 end
 
@@ -64,11 +64,11 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
     coord, atom, mdbox = traj.coords, traj.atomlabels, traj.mdbox
     dist_histogram = zeros(Int, distance_limits.len - 1)
     # Copy trajectories of specified atom types for later use; using @view here causes a lot more memory usage
-    coord1 = coord[:, atom .== atomtype1, :]
-    coord2 = coord[:, atom .== atomtype2, :]
+    coord1 = coord[atom .== atomtype1, :]
+    coord2 = coord[atom .== atomtype2, :]
     d_min, d_max, d_step = distance_limits[1], distance_limits[end], convert(Float64, distance_limits.step)
     # Split length of trajecgory $size(coord)[3] into roughly equal chunks, one for each available thread
-    thread_limits = convert.(Int, floor.(range(1, size(coord)[3] + 1, length = Threads.nthreads() + 1)))
+    thread_limits = convert.(Int, floor.(range(1, size(coord)[2] + 1, length = Threads.nthreads() + 1)))
     # Lock to prevent two threads from editing dist_histogram
     Rlock = ReentrantLock()
     # Each thread will process one iteration of this loop; each will produce its own dist_histogram_thread and add it to the overall dist_histogram at the end
@@ -79,8 +79,8 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
         # Iterate through chunk of timesteps set aside for this thread
         @views for i in i_limits
             # Iterate through atoms of both atom types
-            for x in eachcol(coord1[:, :, i])
-                for y in eachcol(coord2[:, :, i])
+            for x in coord1[:, i]
+                for y in coord2[:, i]
                     distance = pbc_dist(x, y, mdbox_thread)
                     bin!(dist_histogram_thread, distance, d_min, d_max, d_step)
                 end
@@ -124,21 +124,21 @@ end
 function oacf(traj::Trajectory, atomtype1, atomtype2)
     atomno1 = count(traj.atomlabels .== atomtype1)
     atomno2 = count(traj.atomlabels .== atomtype2)
-    frameno = size(traj.coords)[3]
+    frame_no = size(traj.coords)[2]
 
     neighborsfirstframe = zeros(Int64, atomno1)
-    frame1type2 = traj.coords[:, traj.atomlabels .== atomtype2, 1]
-    @views for (i, pointtype1) in enumerate(eachcol(traj.coords[:, traj.atomlabels .== atomtype1, 1]))
+    frame1type2 = traj.coords[traj.atomlabels .== atomtype2, 1]
+    @views for (i, pointtype1) in enumerate(traj.coords[traj.atomlabels .== atomtype1, 1])
         neighborsfirstframe[i] = TrajTools.next_neighbor(pointtype1, frame1type2, traj.mdbox)[1]
     end
-    coordstype1 = @view traj.coords[:, traj.atomlabels .== atomtype1, :]
-    coordstype2 = @view traj.coords[:, traj.atomlabels .== atomtype2, :]
-    bondvectors = zeros(Float64, 3, atomno1, frameno)
-    @views for frame in 1:size(traj.coords)[3]
+    coordstype1 = @view traj.coords[traj.atomlabels .== atomtype1, :]
+    coordstype2 = @view traj.coords[traj.atomlabels .== atomtype2, :]
+    bondvectors = zeros(Float64, 3, atomno1, frame_no)
+    @views for frame in 1:frame_no
         for atom1 in 1:count(traj.atomlabels .== atomtype1)
             neighborindex = neighborsfirstframe[atom1]
-            coord1 = coordstype1[:, atom1, frame]
-            coord2 = coordstype2[:, neighborindex, frame]
+            coord1 = coordstype1[atom1, frame]
+            coord2 = coordstype2[neighborindex, frame]
             bondvectors[:, atom1, frame] .= TrajTools.minimum_image_vector(coord1, coord2, traj.mdbox)
             normalize!(bondvectors[:, atom1, frame])
         end
@@ -147,6 +147,6 @@ function oacf(traj::Trajectory, atomtype1, atomtype2)
     # orientational auto correlation
     oacf = vec(mean(sum(auto1, dims=1), dims = 2))
     # time in ps
-    time_oacf = (1:frameno) * traj.timestep_in_fs / 1E3
+    time_oacf = (1:frame_no) * traj.timestep_in_fs / 1E3
     return time_oacf, oacf
 end
