@@ -19,7 +19,7 @@ Combines trajectory information read from xyz-file. Typically created by [`read_
 - `timestep_in_fs::Real`: length of each time step in fs
 """
 struct Trajectory{BoxType<:MDBox}
-    coords::Array{Float64, 3}
+    coords::Matrix{SVector{3, Float64}}
     atomlabels::Vector{String}
     mdbox::BoxType
     unwrapped::Bool
@@ -116,12 +116,12 @@ end
 function xyz_to_coord(path, noa)
     frame_no = Int( countlines(path) / (noa + 2) )
     return open(path) do traj
-           coord = Array{Float64, 3}(undef, 3, noa, frame_no)
+           coord = Matrix{SVector{3, Float64}}(undef, noa, frame_no)
            for i in 1:frame_no
                readline(traj)
                readline(traj)
                for j in 1:noa
-                   coord[:, j, i] = parse.(Float64, split(readline(traj))[2:end])
+                   coord[j, i] = SVector{3}(parse.(Float64, split(readline(traj))[2:end]))
                end
            end
            return coord
@@ -174,10 +174,9 @@ function remove_com!(coords, atom)
     atom_masses = [atomic_mass_dict[entry] for entry in atom]
     atom_masses /= sum(atom_masses)
 
-    com = zeros(MVector{3})
-    for i in 1:size(coords)[3]
-        mul!(com, coords[:, :, i], atom_masses)
-        coords[:, :, i] .-= com
+    for i in 1:size(coords)[2]
+        com = sum(coords[:, i] .* atom_masses)
+        coords .-= Scalar{SVector{3, Float64}}(com)
     end
     return coords
 end
@@ -199,20 +198,17 @@ end
 Unwraps trajectory, so that atoms can freely move outside of the simulation box.
 """
 function unwrap_trajectory!(coords, mdbox::MDBox)
-    pbc = mdbox.pbc
-    if size(pbc) == (3,)
-        pbc = diagm(pbc)
-    end
+    pbc = mdbox.pbc_matrix
     inv_pbc = inv(pbc)
 
     to_be_wrapped = mdbox.inversespace_tmp
-    for frame in 1:size(coords)[3]-1
-        for atom in 1:size(coords)[2]
-            @views mdbox.realspace_tmp .= coords[:, atom, frame + 1] .- coords[:, atom, frame]
+    for frame in 1:size(coords)[2]-1
+        for atom in 1:size(coords)[1]
+            mdbox.realspace_tmp .= coords[atom, frame + 1] .- coords[atom, frame]
             mul!(mdbox.inversespace_tmp, inv_pbc, mdbox.realspace_tmp)
-            to_be_wrapped .= floor.(mdbox.inversespace_tmp .+ 0.5)
+            to_be_wrapped .= round.(mdbox.inversespace_tmp)
             mul!(mdbox.realspace_tmp, pbc, to_be_wrapped)
-            coords[:, atom, frame + 1] .-= mdbox.realspace_tmp
+            coords[atom, frame + 1] -= mdbox.realspace_tmp
         end
     end
 end
@@ -235,7 +231,12 @@ function xyz_or_jld_to_arrays(path)
         println("Auxiliary file $auxiliarypath doesn't exist. Reading xyz-file...")
         coord, atom = xyz_to_ar(path)
         println("Coord: $(size(coord)), atom: $(size(atom))")
-        JLD.save(auxiliarypath, "coord", coord, "atom", atom)
+        jldopen(auxiliarypath, "w") do file
+            addrequire(file, StaticArrays)
+            write(file, "coord", coord)
+            write(file, "atom", atom)
+        end
+#        JLD.save(auxiliarypath, "coord", coord, "atom", atom)
     else
         println("Trajectory $path was not found.")
         return nothing, nothing
