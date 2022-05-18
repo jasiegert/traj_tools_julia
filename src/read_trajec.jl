@@ -1,4 +1,4 @@
-using JLD
+using JLD2
 using LinearAlgebra
 using StaticArrays
 using DelimitedFiles
@@ -221,10 +221,10 @@ Reads the contents of a trajectory file in xyz-format and returns coordinates (a
 For a file 'traj.xyz' an auxiliary file 'traj.xyz.jld' will be written. Should this file already exist, it will be read instead of the xyz-file.
 """
 function xyz_or_jld_to_arrays(path)
-    auxiliarypath = path * ".jld"
+    auxiliarypath = path * ".jld2"
     if isfile(auxiliarypath)
         println("Auxiliary file $auxiliarypath exists. Reading...")
-        auxiliary = JLD.load(auxiliarypath)
+        auxiliary = load(auxiliarypath)
         coord, atom = auxiliary["coord"], auxiliary["atom"]
         println("Coord: $(size(coord)), atom: $(size(atom))")
     elseif isfile(path)
@@ -232,7 +232,6 @@ function xyz_or_jld_to_arrays(path)
         coord, atom = xyz_to_ar(path)
         println("Coord: $(size(coord)), atom: $(size(atom))")
         jldopen(auxiliarypath, "w") do file
-            addrequire(file, StaticArrays)
             write(file, "coord", coord)
             write(file, "atom", atom)
         end

@@ -93,15 +93,26 @@ Returns the vector connecting two points according to the minimum image convenct
 For distances above half of the shortest box diameter (see [`max_distance_for_pbc_dist(traj::Trajectory)`](@ref)), this might give erroneous results. 
 """
 function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
-    minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
+    #minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
+    minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
 end
 
+#=
 function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
     dist_tmp .= point1 .- point2
     mul!(matmul_tmp, inv_pbc,dist_tmp)
     matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
     mul!(dist_tmp, pbc, matmul_tmp)
     return dist_tmp
+end
+=#
+
+function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc))
+    old_dist = point1 .- point2
+    rel_dist = inv_pbc * old_dist
+    rel_dist -= round.(rel_dist)
+    new_dist = pbc * rel_dist
+    return new_dist
 end
 
 function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
