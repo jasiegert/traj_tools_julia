@@ -152,3 +152,19 @@ function next_neighbor(point1, group2, mdbox::MDBox)
     end
     return index, distance
 end
+
+function next_neighbor(point1::SVector{3, Float64}, group2::Vector{SVector{3, Float64}}, mdbox::MDBox, atomtypes::Vector{String}, targettype::Vector{String})
+    index, distance = -1, Inf
+    for i in 1:length(group2)
+        if !(atomtypes[i] in targettypes)
+            continue
+        end
+        point2 = group2[i]
+        new_distance = pbc_dist(point1, point2, mdbox)
+        if new_distance < distance
+            distance = new_distance
+            index = i
+        end
+    end
+    return index, distance
+end
