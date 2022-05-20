@@ -37,10 +37,9 @@ Orthorhombic simulation box. Expects the periodic boundary conditions as a 3x3 m
 struct OrthorhombicBox <: MDBox
     pbc_matrix::SMatrix{3, 3, Float64, 9}
     cell_parameters::SVector{3, Float64}
-    dist_tmp::MVector{3, Float64}
 end
 
-OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SMatrix{3, 3, Float64, 9}(diagm(pbc)), SVector{3, Float64}(pbc), zeros(MVector{3, Float64}))
+OrthorhombicBox(pbc::AbstractArray) = OrthorhombicBox(SMatrix{3, 3, Float64, 9}(diagm(pbc)), SVector{3, Float64}(pbc))
 
 """
     TriclinicBox(pbc)
@@ -50,11 +49,9 @@ Triclinic simulation box. Expects the periodic boundary conditions as a 3x3 matr
 struct TriclinicBox <: MDBox
     pbc_matrix::SMatrix{3, 3, Float64, 9}
     inv_pbc_matrix::SMatrix{3, 3, Float64, 9}
-    realspace_tmp::MVector{3, Float64}
-    inversespace_tmp::MVector{3, Float64}
 end
 
-TriclinicBox(pbc::AbstractArray) = TriclinicBox(pbc, inv(pbc), zeros(MVector{3, Float64}), zeros(MVector{3, Float64}))
+TriclinicBox(pbc::AbstractArray) = TriclinicBox(pbc, inv(pbc))
 
 
 """

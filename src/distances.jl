@@ -115,26 +115,21 @@ function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc))
     return new_dist
 end
 
-function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    dist_tmp .= abs.(point1 .- point2)
-    mul!(matmul_tmp, inv_pbc,dist_tmp)
-    matmul_tmp .-= floor.(matmul_tmp .+ 0.5) .+ 1
-    distance = pbc[1, 1] + pbc[2, 2] + pbc[3, 3]
-    for i in 1:3
-        for j in 1:3
-            for k in 1:3
-                mul!(dist_tmp, pbc, matmul_tmp)
-                new_distance = norm(dist_tmp)
-                if new_distance < distance
-                    distance = new_distance
-                end
-                matmul_tmp[3] += 1
-            end
-            matmul_tmp[3] -= 3
-            matmul_tmp[2] += 1
+function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc))
+    rel_dist = inv_pbc * (point2 - point1)
+    rel_dist -= round.(rel_dist)
+    direct_dist = pbc * rel_dist
+    distance = Inf
+    a, b, c = pbc[:, 1], pbc[:, 2], pbc[:, 3]
+    for i in -1:1
+        for j in -1:1
+             for k in -1:1
+                  test_dist = norm(direct_dist + i * a + j*b + k*c)
+                  if test_dist < distance
+                       distance = test_dist
+                  end
+             end
         end
-        matmul_tmp[2] -= 3
-        matmul_tmp[1] += 1
     end
     return distance
 end
