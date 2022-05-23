@@ -13,19 +13,26 @@ function msd_for_corr_time(coords, corr_time, unwrapped = false)
     return a /= (frame_no - corr_time) * atom_no
 end
 
+"""
+    msd_direct(traj::Trajectory, targetatom::String, resolution::Integer, timerange::Real)
+
+Calculate the mean squared displacement (MSD) averaged over all atoms of type `targetatom` in trajectory `traj`.
+
+Correlation times will be sampled in `resolution` equidistant points up until `timerange` times trajectory length. For a trajectory of length 100, a timerange of 0.3 and resolution of 10 would produce correlation times in 0:3:27.
+"""
 function msd_direct(traj::Trajectory, targetatom, resolution, timerange)
     if !traj.unwrapped
         println("Trajectory is not unwrapped -> MSD might be faulty.")
     end
 
-    return msd_direct(traj.coords, traj.timestep_in_fs, traj.atomlabels, targetatom, resolution, timerange)
+    # Correlation time in ps, MSD in A^2
+    τ, msd = msd_direct(traj.coords, traj.timestep_in_fs, traj.atomlabels, targetatom, resolution, timerange)
+    return τ, msd
 end
 
 function msd_direct(coords, timestep_fs, atom, targetatom, resolution, timerange)
     timesteps = size(coords)[2]
     corr_time_list = range(0, length = resolution, step = round(Int, timesteps * timerange / resolution))
-    # Permuting the trajectory to shape (timesteps, dimensions, atoms) is faster, because it allows the innermost loop over the timesteps to be along the first dimension
-    #traj_msd = permutedims(coords[:, atom .== targetatom, :], [3, 1, 2])
     coords_target = @view coords[atom .== targetatom, :]
     msd_result = Array{Float64, 1}(undef, resolution)
     Threads.@threads for i in 1:resolution
@@ -45,6 +52,11 @@ function msd_fft(traj, timestep_fs, atom, targetatom, timerange)
     fft_result = irfft(fft_result, size(traj_msd)[1] * 2, 1)
 end
 
+"""
+    rdf(traj::Trajectory, atomtype1::String, atomtype2::String, d_min::Real, d_max::Real, bins::Integer)
+
+Calculate the radial distribution function (RDF) between the two specified atom types in the trajectory.
+"""
 function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins)
     coord, atom, pbc = traj.coords, traj.atomlabels, traj.mdbox.pbc_matrix
     # Each bin i contains distances from distance_limits[i] to distance_limits[i+1]; distnace_mean[i] will be the average of both values
@@ -94,6 +106,34 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
     return dist_histogram
 end
 
+"""
+    bin!(dist_histogram::Vector{R}, distance::Real, d_range::D) where {R <: Real, D <: StepRangeLen}
+    bin!(dist_histogram::Vector{R}, distance::Real, d_min::Real, d_max::Real, d_step::Real)
+
+Add a value `distance` to the appropriate bin in `dist_histogram` according to the limits in `d_range` or `d_min`, `d_max` and `d_step`.
+
+# Examples
+```jldoctest
+julia> d_limits = range(1; stop = 5, length = 5)
+1.0:1.0:10.0
+julia> hist = zeros(Int, 10)
+5-element Vector{Int64}:
+ 0
+ 0
+ 0
+ 0
+ 0
+julia> TrajTools.bin!(hist, 2.5, d_limits)
+1
+julia> hist
+10-element Vector{Int64}:
+ 0
+ 1
+ 0
+ 0
+ 0
+```
+"""
 function bin!(dist_histogram, distance, d_range::D) where {D <: StepRangeLen}
     bin!(dist_histogram, distance, d_range[1], d_range[end], convert(Float64, d_range.step))
 end
@@ -106,7 +146,14 @@ function bin!(dist_histogram, distance, d_min, d_max, d_step)
     end
 end
 
+"""
+    autocorrFFT(inputarray::Abstractarray)
+
+Autocorrelates the content of 3D array `inputarray` along the last axis.
+"""
 function autocorrFFT(inputarray)
+    # Possible improvements: remove allocation of paddedarray
+    #                        make it agnostic to dimensionality of inputarray
     arraylength = size(inputarray)[end]
     paddedlength = arraylength * 2 + 1
     paddedarray = zeros(eltype(inputarray), size(inputarray)[1:end-1]..., paddedlength)
@@ -121,6 +168,11 @@ function autocorrFFT(inputarray)
     return autocorr
 end
 
+"""
+    oacf(traj::Trajectory, atomtype1::String, atomtype2::String)
+
+Calculate the autocorrelation of the vectors connecting each atom of `atomtype1` to its nearest neighbor of `atomtype2` (orientational autocorrelation function, OACF).
+"""
 function oacf(traj::Trajectory, atomtype1, atomtype2)
     atomno1 = count(traj.atomlabels .== atomtype1)
     atomno2 = count(traj.atomlabels .== atomtype2)
@@ -136,15 +188,18 @@ function oacf(traj::Trajectory, atomtype1, atomtype2)
     bondvectors = zeros(Float64, 3, atomno1, frame_no)
     @views for frame in 1:frame_no
         for atom1 in 1:count(traj.atomlabels .== atomtype1)
+            # Find nearest neighbor of atomtype2 for each atomtype1
             neighborindex = neighborsfirstframe[atom1]
             coord1 = coordstype1[atom1, frame]
             coord2 = coordstype2[neighborindex, frame]
+            # Store normalized vector connecting atomtype1 with its atomtype2 neighbor
             bondvectors[:, atom1, frame] .= TrajTools.minimum_image_vector(coord1, coord2, traj.mdbox)
             normalize!(bondvectors[:, atom1, frame])
         end
     end
+    # Autocorrelate vectors over time (autocorrelations are independent of each other along all vectors and all spatial directions)
     auto1 = autocorrFFT(bondvectors)
-    # orientational auto correlation
+    # orientational auto correlation -> sum over all spatial dimensions and average over all atoms
     oacf = vec(mean(sum(auto1, dims=1), dims = 2))
     # time in ps
     time_oacf = (1:frame_no) * traj.timestep_in_fs / 1E3
