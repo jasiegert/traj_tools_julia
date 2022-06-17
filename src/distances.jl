@@ -38,25 +38,12 @@ For non-orthorhombic boxes, this is only accurate up to half of the shortest box
     - mdbox::MDBox: simulation box
 """
 function pbc_dist(point1, point2, mdbox::OrthorhombicBox)
-    for i in 1:3
-        mdbox.dist_tmp[i] = (point1[i] - point2[i]) / mdbox.cell_parameters[i]
-        mdbox.dist_tmp[i] -= floor(mdbox.dist_tmp[i] + 0.5)
-        mdbox.dist_tmp[i] *= mdbox.cell_parameters[i]
-    end
-    return norm(mdbox.dist_tmp)
-end
+           old_dist = point1 .- point2
+           offsets = round.( old_dist .* mdbox.inv_cell_parameters )
+           dist = old_dist .- offsets .* mdbox.cell_parameters
+           return norm(dist)
+       end
 
-#function pbc_dist(point1, point2, mdbox::TriclinicBox)
-#    pbc_dist(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
-#end
-
-#function pbc_dist(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-#    dist_tmp .= point1 .- point2
-#    mul!(matmul_tmp, inv_pbc,dist_tmp)
-#    matmul_tmp .-= round.(matmul_tmp)
-#    mul!(dist_tmp, pbc, matmul_tmp)
-#    return norm(dist_tmp)
-#end
 
 function pbc_dist(p1, p2, mdbox::TriclinicBox)
     pbc_dist(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
@@ -67,7 +54,7 @@ end
 function pbc_dist(p1, p2, pbc, inv_pbc)
     # pbc (and inv_pbc by extension) have to be upper-triagonal now!
     # direct distance between the two points
-        # d = p1 .- p300
+        # d = p1 .- p2
     d1, d2, d3 = p1[1] - p2[1], p1[2] - p2[2], p1[3] - p2[3]
     # convert distance to relative coordinates and save rounded values
         # m = round.(inv_pbc * d)
@@ -93,19 +80,8 @@ Returns the vector connecting two points according to the minimum image convenct
 For distances above half of the shortest box diameter (see [`max_distance_for_pbc_dist(traj::Trajectory)`](@ref)), this might give erroneous results. 
 """
 function minimum_image_vector(point1, point2, mdbox::TriclinicBox)
-    #minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix, mdbox.realspace_tmp, mdbox.inversespace_tmp)
     minimum_image_vector(point1, point2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
 end
-
-#=
-function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc), dist_tmp = zeros(MVector{3}), matmul_tmp = zeros(MVector{3}))
-    dist_tmp .= point1 .- point2
-    mul!(matmul_tmp, inv_pbc,dist_tmp)
-    matmul_tmp .-= floor.(matmul_tmp .+ 0.5)
-    mul!(dist_tmp, pbc, matmul_tmp)
-    return dist_tmp
-end
-=#
 
 function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc))
     old_dist = point1 .- point2
