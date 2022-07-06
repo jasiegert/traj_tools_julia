@@ -2,17 +2,6 @@ using FFTW
 using StaticArrays
 using Statistics
 
-function msd_for_corr_time(coords, corr_time, unwrapped = false)
-    a = 0
-    atom_no, frame_no = size(coords)
-    for atom in 1:atom_no
-        for frame in 1:frame_no-corr_time
-            @inbounds a += sum( x -> x^2, coords[atom, frame] .- coords[atom, frame + corr_time] )
-        end
-    end
-    return a /= (frame_no - corr_time) * atom_no
-end
-
 """
     msd_direct(traj::Trajectory, targetatom::String, resolution::Integer, timerange::Real)
 
@@ -41,6 +30,58 @@ function msd_direct(coords, timestep_fs, atom, targetatom, resolution, timerange
     # correlation time in ps, MSD in A^2
     return corr_time_list * timestep_fs / 1000, msd_result
 end
+
+function msd_for_corr_time(coords, corr_time, unwrapped = false)
+    a = 0
+    atom_no, frame_no = size(coords)
+    for atom in 1:atom_no
+        for frame in 1:frame_no-corr_time
+            @inbounds a += sum( x -> x^2, coords[atom, frame] .- coords[atom, frame + corr_time] )
+        end
+    end
+    return a /= (frame_no - corr_time) * atom_no
+end
+
+"""
+    msd_xyz_direct(traj::Trajectory, targetatom::String, resolution::Integer, timerange::Real)
+
+Calculate the mean squared displacement (MSD) in x-, y- and z-direction averaged over all atoms of type `targetatom` in trajectory `traj`.
+
+Correlation times will be sampled in `resolution` equidistant points up until `timerange` times trajectory length. For a trajectory of length 100, a timerange of 0.3 and resolution of 10 would produce correlation times in 0:3:27.
+"""
+function msd_xyz_direct(traj::Trajectory, targetatom, resolution, timerange)
+    if !traj.unwrapped
+        println("Trajectory is not unwrapped -> MSD might be faulty.")
+    end
+
+    # Correlation time in ps, MSD in A^2
+    τ, msd = msd_xyz_direct(traj.coords, traj.timestep_in_fs, traj.atomlabels, targetatom, resolution, timerange)
+    return τ, msd
+end
+
+function msd_xyz_direct(coords, timestep_fs, atom, targetatom, resolution, timerange)
+    timesteps = size(coords)[2]
+    corr_time_list = range(0, length = resolution, step = round(Int, timesteps * timerange / resolution))
+    coords_target = @view coords[atom .== targetatom, :]
+    msd_result = Array{Float64, 2}(undef, resolution, 3)
+    Threads.@threads for i in 1:resolution
+        msd_result[i, :] = msd_xyz_for_corr_time(coords_target, corr_time_list[i])
+    end
+    # correlation time in ps, MSD in A^2
+    return corr_time_list * timestep_fs / 1000, msd_result
+end
+
+function msd_xyz_for_corr_time(coords, corr_time, unwrapped = false)
+    a = @SVector [0, 0, 0]
+    atom_no, frame_no = size(coords)
+    for atom in 1:atom_no
+        for frame in 1:frame_no-corr_time
+            @inbounds a += (coords[atom, frame] .- coords[atom, frame + corr_time]).^2
+        end
+    end
+    return a /= (frame_no - corr_time) * atom_no
+end
+
 
 function msd_fft(traj, timestep_fs, atom, targetatom, timerange)
     traj_msd = @view traj[:, atom .== targetatom, :]
