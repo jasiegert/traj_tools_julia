@@ -29,6 +29,14 @@ end
 Trajectory(coords, atomlabels, box, unwrapped) = Trajectory(coords, atomlabels, box, unwrapped, 0.5)
 Trajectory(coords, atomlabels, box) = Trajectory(coords, atomlabels, box, false)
 
+function Base.show(io::IO, traj::Trajectory)
+    atom_no, frame_no = size(traj.coords)
+    types = unique(traj.atomlabels)
+    type_counts = [count(traj.atomlabels .== type) for type in unique(traj.atomlabels)]
+    print(io, "Trajectory of $(atom_no) atoms in $(frame_no) time steps.\n")
+    print(io, "Types:  " * join( [t * ": " * string(c) * "\n\t" for (t, c) in zip(types, type_counts)]))
+end
+
 """
     OrthorhombicBox(pbc)
 
