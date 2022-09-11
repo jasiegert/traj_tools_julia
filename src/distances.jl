@@ -91,6 +91,13 @@ function minimum_image_vector(point1, point2, pbc, inv_pbc = inv(pbc))
     return new_dist
 end
 
+pbc_dist_triclinic(point1, point2, mdbox::OrthorhombicBox) = return pbc_dist(point1, point2, mdbox)
+
+
+function pbc_dist_triclinic(p1, p2, mdbox::TriclinicBox)
+    pbc_dist_triclinic(p1, p2, mdbox.pbc_matrix, mdbox.inv_pbc_matrix)
+end
+
 function pbc_dist_triclinic(point1, point2, pbc, inv_pbc = inv(pbc))
     rel_dist = inv_pbc * (point2 - point1)
     rel_dist -= round.(rel_dist)
