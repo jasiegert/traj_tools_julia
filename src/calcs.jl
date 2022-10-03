@@ -94,11 +94,14 @@ function msd_fft(traj, timestep_fs, atom, targetatom, timerange)
 end
 
 """
-    rdf(traj::Trajectory, atomtype1::String, atomtype2::String, d_min::Real, d_max::Real, bins::Integer)
+    rdf(traj::Trajectory, atomtype1::String, atomtype2::String, d_min::Real, d_max::Real, bins::Integer, central_atoms::Nothing)
+    rdf(traj::Trajectory, atomtype1::String, atomtype2::String, d_min::Real, d_max::Real, bins::Integer, central_atoms::Vector{String})
 
 Calculate the radial distribution function (RDF) between the two specified atom types in the trajectory.
+
+If central_atoms is specified, then atoms will be assigned to molecules based on their closest central atom and only intermolecular distances are considered. Otherwise normal RDF is calculated.
 """
-function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins)
+function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins, central_atoms = nothing)
     coord, atom, pbc = traj.coords, traj.atomlabels, traj.mdbox.pbc_matrix
     # Each bin i contains distances from distance_limits[i] to distance_limits[i+1]; distnace_mean[i] will be the average of both values
     distance_limits = range(d_min, d_max, length = bins + 1)
@@ -108,12 +111,12 @@ function rdf(traj::Trajectory, atomtype1, atomtype2, d_min, d_max, bins)
     cell_volume = det(pbc) #pbc[1,:] ⋅ (pbc[2,:] × pbc[3,:])
     ideal_density = count(atom .== atomtype1) * count(atom .== atomtype2) / cell_volume
     # Create distance histogram; delegate calculation of all distances and binning to create_dist_histogram_multi
-    dist_histogram = create_dist_histogram_multi(traj, atomtype1, atomtype2, distance_limits)
+    dist_histogram = create_dist_histogram_multi(traj, atomtype1, atomtype2, distance_limits, central_atoms)
     rdf = dist_histogram ./ (shell_volumes .* ideal_density .* size(coord)[2])
     return distance_mean, rdf
 end
 
-function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, distance_limits)
+function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, distance_limits, central_atoms::Nothing)
     coord, atom, mdbox = traj.coords, traj.atomlabels, traj.mdbox
     dist_histogram = zeros(Int, distance_limits.len - 1)
     # Copy trajectories of specified atom types for later use; using @view here causes a lot more memory usage
@@ -145,6 +148,53 @@ function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, dis
         unlock(Rlock)
     end
     return dist_histogram
+end
+
+function create_dist_histogram_multi(traj::Trajectory, atomtype1, atomtype2, distance_limits, central_atoms)
+   coord, atom, mdbox = traj.coords, traj.atomlabels, traj.mdbox
+   dist_histogram = zeros(Int, distance_limits.len - 1)
+   # Copy trajectories of specified atom types for later use; using @view here causes a lot more memory usage
+   coord1 = coord[atom .== atomtype1, :]
+   coord2 = coord[atom .== atomtype2, :]
+   d_min, d_max, d_step = distance_limits[1], distance_limits[end], convert(Float64, distance_limits.step)
+   # Split length of trajecgory $size(coord)[3] into roughly equal chunks, one for each available thread
+   thread_limits = convert.(Int, floor.(range(1, size(coord)[2] + 1, length = Threads.nthreads() + 1)))
+   # Lock to prevent two threads from editing dist_histogram
+   Rlock = ReentrantLock()
+   # Each thread will process one iteration of this loop; each will produce its own dist_histogram_thread and add it to the overall dist_histogram at the end
+   Threads.@threads for i_thread in 1:Threads.nthreads()
+       dist_histogram_thread = zeros(Int, distance_limits.len - 1)
+       mdbox_thread = deepcopy(mdbox)
+       molecules_1 = zeros(Int, size(coord1, 1))
+       molecules_2 = zeros(Int, size(coord2, 1))
+       i_limits = thread_limits[Threads.threadid()]:(thread_limits[Threads.threadid() + 1] - 1)
+       # Iterate through chunk of timesteps set aside for this thread
+       @views for i in i_limits
+           frame1 = coord1[:, i]
+           frame2 = coord2[:, i]
+           frame_central = coord[ in(central_atoms).(atom), i]
+           for (yi, y) in enumerate(frame2)
+               molecules_2[yi] = next_neighbor(y, frame_central, mdbox)[1]
+           end
+           for (xi, x) in enumerate(frame1)
+               molecules_1[xi] = next_neighbor(x, frame_central, mdbox)[1]
+           end
+           # Iterate through atoms of both atom types
+           for (x, m1) in zip(frame1, molecules_1)
+               for (y, m2) in zip(frame2, molecules_2)
+                   if m1 != m2
+                       distance = pbc_dist(x, y, mdbox_thread)
+                       bin!(dist_histogram_thread, distance, d_min, d_max, d_step)
+                   end
+               end 
+           end 
+       end
+       # Add thread-local dist_histogram_thread to overall dist_histogram; lock it in the meantime in order to prevent threads from interfering with each other
+       lock(Rlock)
+       dist_histogram .+= dist_histogram_thread
+       unlock(Rlock)
+   end 
+   return dist_histogram
 end
 
 """
